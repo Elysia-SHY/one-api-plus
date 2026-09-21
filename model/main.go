@@ -176,6 +176,22 @@ func migrateDB() error {
 	if err = DB.AutoMigrate(&UserBudget{}); err != nil {
 		return err
 	}
+	// One API Plus 第二阶段（AI Gateway）
+	if err = DB.AutoMigrate(&ModelCapability{}); err != nil {
+		return err
+	}
+	if err = DB.AutoMigrate(&ModelGroup{}); err != nil {
+		return err
+	}
+	if err = DB.AutoMigrate(&ModelGroupMember{}); err != nil {
+		return err
+	}
+	if err = DB.AutoMigrate(&MCPServer{}); err != nil {
+		return err
+	}
+	if err = DB.AutoMigrate(&MemoryRecord{}); err != nil {
+		return err
+	}
 	return nil
 }
 

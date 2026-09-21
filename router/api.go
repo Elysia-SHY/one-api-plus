@@ -140,6 +140,8 @@ func SetApiRouter(router *gin.Engine) {
 			plusRoute.GET("/cost/predict", middleware.UserAuth(), controller.PredictCost)
 			plusRoute.GET("/budget", middleware.UserAuth(), controller.GetBudget)
 			plusRoute.PUT("/budget", middleware.AdminAuth(), controller.UpdateBudget)
+
+			registerPlus2Routes(plusRoute)
 		}
 	}
 }

@@ -116,6 +116,66 @@ _✨ 通过标准的 OpenAI API 格式访问所有的大模型，开箱即用 �
 | GET | `/api/plus/cost/predict` | 用户 | 请求前成本预测 |
 | GET/PUT | `/api/plus/budget` | 用户 / 管理员 | 查询与设置日 / 月预算 |
 
+## One API Plus 第二阶段：AI Gateway
+
+第二阶段把网关从「会选路的转发器」推进到「可被 Agent 直接使用的接入层」。
+以下每一项都对应一套可独立关闭的能力，默认全部不影响原有中继行为。
+
+| 能力 | 说明 | 主要配置项 |
+| --- | --- | --- |
+| 模型能力数据库 | context_length / max_output / vision / tool_call / reasoning / embedding / 模态信息；内置主力模型知识库 + 名称规则推断 + 可选在线探测 | `CAPABILITY_ENABLED`、`CAPABILITY_DETECT` |
+| 模型组 | 逻辑模型名（如 `coding-assistant`）映射到多个真实模型，按 first_available / random / round_robin / capability 挑选；上游换型号时调用方无需改代码 | `MODEL_GROUP_ENABLED`、`MODEL_GROUP_STRATEGY` |
+| 负载感知路由 | 评分从「单一维度」升级为「延迟 / 成本 / 稳定性 / 并发负载」四维加权，新增 `balanced` 综合策略 | `ROUTING_LOAD_AWARE`、`ROUTING_WEIGHTS`、`ROUTING_MAX_LOAD` |
+| Prompt 上下文缓存 | 按消息前缀（而非整请求）哈希缓存，专治 Agent / IDE 每轮重发完整历史导致的重复计费 | `PROMPT_CACHE_ENABLED`、`PROMPT_CACHE_MIN_TOKENS` |
+| Responses API | 新增 `/v1/responses`，与 chat/completions 双向转换，含流式 SSE 改写；Codex CLI、新版 SDK 可直接对接任意渠道 | `RESPONSES_API_ENABLED` |
+| MCP 网关 | 登记外部 MCP server，把 `tools/list` 聚合成 OpenAI tools 并提供 `/api/plus/mcp/call` 直接调用 | `MCP_ENABLED`、`MCP_SERVERS` |
+| Agent Memory | short / long / profile 三级记忆，关键词索引 + 自动滚动裁剪，可按 session 隔离 | `MEMORY_ENABLED`、`MEMORY_MAX_ITEMS` |
+| Dashboard | 今日请求数 / 用量 / Token / 平均延迟 / 活跃用户，24h 趋势，Top N 模型与渠道，健康度分布 | `DASHBOARD_ENABLED`、`/api/plus/dashboard` |
+| 频率限制 | 令牌桶 QPM + 并发闸门，可按用户 / 令牌 / 模型维度分别限流，返回标准 `RateLimit-*` 响应头 | `RATE_LIMIT_ENABLED`、`RATE_LIMIT_QPM`、`RATE_LIMIT_CONCURRENT` |
+| Lite 构建 | `go build -tags lite` 不嵌入 Web 控制台、不编译 Dashboard / MCP / Memory 管理接口，体积与常驻内存显著下降 | 编译期裁剪 |
+
+### 第二阶段新增接口
+
+| 方法 | 路径 | 权限 | 说明 |
+| --- | --- | --- | --- |
+| POST | `/v1/responses` | 令牌 | Responses API 兼容端点（Codex CLI / 新版 SDK 使用） |
+| GET | `/api/plus/dashboard` | 用户 | 面板聚合数据（`days` 参数） |
+| GET | `/api/plus/load` | 管理员 | 各渠道实时并发负载 |
+| GET/PUT | `/api/plus/routing` | 管理员 | 路由策略与四维权重 |
+| GET | `/api/plus/ratelimit` | 用户 | 限流配置与当前占用 |
+| GET | `/api/plus/capability` | 用户 | 模型能力列表 |
+| GET | `/api/plus/capability/search` | 用户 | 按能力筛选模型 |
+| GET | `/api/plus/capability/:name` | 用户 | 单个模型能力画像 |
+| POST | `/api/plus/capability/:name/refresh` | 管理员 | 重建能力记录（`force=1` 覆盖） |
+| PUT | `/api/plus/capability` | 管理员 | 人工写入能力 |
+| GET/POST/PUT/DELETE | `/api/plus/group/model` | 混合 | 模型组管理 |
+| POST/DELETE | `/api/plus/group/model/member` | 管理员 | 组成员管理 |
+| GET/POST/DELETE | `/api/plus/mcp` | 管理员 | MCP 服务器登记 |
+| POST | `/api/plus/mcp/discover` | 管理员 | 触发工具发现 |
+| POST | `/api/plus/mcp/call` | 管理员 | 调用 MCP 工具 |
+| GET/POST/DELETE | `/api/plus/memory` | 用户 | Agent 记忆读写 |
+| GET | `/api/plus/memory/search` | 用户 | 长期记忆关键词检索 |
+
+### 用 Codex CLI / 新版 SDK 直连
+
+```shell
+export OPENAI_BASE_URL=http://127.0.0.1:3000/v1
+export OPENAI_API_KEY=sk-xxxx
+codex "帮我给这个项目加单元测试"
+```
+
+网关会把 `/v1/responses` 请求翻译成 chat 形态发给上游，再把响应翻译回
+`response.output_text` / `response.function_call` / 流式 delta 事件，客户端无需感知。
+
+### 编译 Lite 版本
+
+```shell
+# 不嵌入前端产物，剔除管理向接口
+go build -tags lite -ldflags "-s -w" -o one-api-lite .
+# LITE_MODE=true 进一步关闭后台同步与健康检测任务
+LITE_MODE=true ./one-api-lite --port 3000
+```
+
 ## 功能
 1. 支持多种大模型：
    + [x] [OpenAI ChatGPT 系列模型](https://platform.openai.com/docs/guides/gpt/chat-completions-api)（支持 [Azure OpenAI API](https://learn.microsoft.com/en-us/azure/ai-services/openai/reference)）

@@ -31,6 +31,14 @@ type ModelCatalog struct {
 	LastSeen   int64  `json:"last_seen" gorm:"bigint"`
 	SyncTime   int64  `json:"sync_time" gorm:"bigint"`
 	SyncStatus string `json:"sync_status" gorm:"type:varchar(32);default:''"`
+
+	// 第二阶段：模型能力画像（冗余自 model_capabilities，便于按渠道查看）
+	ContextLength int `json:"context_length" gorm:"default:0"`
+	MaxOutput     int `json:"max_output" gorm:"default:0"`
+	Vision        int `json:"vision" gorm:"default:0"`
+	ToolCall      int `json:"tool_call" gorm:"default:0"`
+	Reasoning     int `json:"reasoning" gorm:"default:0"`
+	Embedding     int `json:"embedding" gorm:"default:0"`
 }
 
 // UpsertCatalogModels 把一次同步拿到的模型列表写回目录，返回新增的模型名

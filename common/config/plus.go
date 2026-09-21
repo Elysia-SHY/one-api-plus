@@ -52,7 +52,7 @@ var (
 
 // 模型别名；DEFAULT_ALIASES 形如 {"gemini-flash":"gemini-2.5-flash-preview"}
 var (
-	AliasEnabled  = env.Bool("ALIAS_ENABLED", true)
+	AliasEnabled   = env.Bool("ALIAS_ENABLED", true)
 	DefaultAliases = env.String("DEFAULT_ALIASES", "")
 )
 
@@ -107,6 +107,7 @@ const (
 	StrategyLatency   = "latency"   // 延迟优先
 	StrategyCost      = "cost"      // 成本优先
 	StrategyStability = "stability" // 稳定性优先
+	StrategyBalanced  = "balanced"  // 第二阶段：四维加权综合评分
 )
 
 // ---------------------------------------------------------------------------

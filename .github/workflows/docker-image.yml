@@ -3,12 +3,14 @@ name: Publish Docker image
 on:
   push:
     tags:
-      - 'v*.*.*'
+      - 'v*'
   workflow_dispatch:
     inputs:
-      name:
-        description: 'reason'
+      reason:
+        description: 'Build reason'
         required: false
+        default: 'manual release build'
+
 jobs:
   push_to_registries:
     name: Push Docker image to multiple registries
@@ -18,18 +20,15 @@ jobs:
       contents: read
     steps:
       - name: Check out the repo
-        uses: actions/checkout@v3
-
-      - name: Check repository URL
-        run: |
-          REPO_URL=$(git config --get remote.origin.url)
-          if [[ $REPO_URL == *"pro" ]]; then
-            exit 1
-          fi
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Save version info
         run: |
-          git describe --tags > VERSION 
+          # 手动触发时可能没有 tag，回退到仓库里的 VERSION 文件
+          VERSION_TAG=$(git describe --tags 2>/dev/null || cat VERSION)
+          echo "$VERSION_TAG" > VERSION
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -38,13 +37,17 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to Docker Hub
-        uses: docker/login-action@v2
+        # 没配 DOCKERHUB 凭据时跳过，不影响 GHCR 推送
+        if: ${{ env.DOCKERHUB_USERNAME != '' }}
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
 
       - name: Log in to the Container registry
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -52,17 +55,18 @@ jobs:
 
       - name: Extract metadata (tags, labels) for Docker
         id: meta
-        uses: docker/metadata-action@v4
+        uses: docker/metadata-action@v5
         with:
           images: |
-            ${{ contains(github.ref, 'alpha') && 'justsong/one-api-alpha' || 'justsong/one-api' }}
             ${{ contains(github.ref, 'alpha') && format('ghcr.io/{0}-alpha', github.repository) || format('ghcr.io/{0}', github.repository) }}
 
       - name: Build and push Docker images
-        uses: docker/build-push-action@v3
+        uses: docker/build-push-action@v5
         with:
           context: .
-          platforms: ${{ contains(github.ref, 'alpha') && 'linux/amd64' || 'linux/amd64' }}
+          platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

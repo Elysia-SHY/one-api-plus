@@ -18,7 +18,9 @@ func SetRelayRouter(router *gin.Engine) {
 		modelsRouter.GET("/:model", controller.RetrieveModel)
 	}
 	relayV1Router := router.Group("/v1")
-	relayV1Router.Use(middleware.RelayPanicRecover(), middleware.TokenAuth(), middleware.Distribute())
+	// One API Plus：限流挂在鉴权之后、选路之前，按用户/令牌维度做令牌桶 + 并发闸门
+	relayV1Router.Use(middleware.RelayPanicRecover(), middleware.TokenAuth(),
+		middleware.RateLimit(), middleware.Distribute())
 	{
 		relayV1Router.Any("/oneapi/proxy/:channelid/*target", controller.Relay)
 		relayV1Router.POST("/completions", controller.Relay)
@@ -70,5 +72,14 @@ func SetRelayRouter(router *gin.Engine) {
 		relayV1Router.POST("/threads/:id/runs/:runsId/cancel", controller.RelayNotImplemented)
 		relayV1Router.GET("/threads/:id/runs/:runsId/steps/:stepId", controller.RelayNotImplemented)
 		relayV1Router.GET("/threads/:id/runs/:runsId/steps", controller.RelayNotImplemented)
+	}
+	// One API Plus：Responses API 兼容层（Codex CLI / 新版 SDK）
+	// ResponsesAdapter 必须排在鉴权之前：它先把请求体改写成 chat 形态，
+	// 后面的 TokenAuth / Distribute / Relay 就能完全按 chat 链路处理。
+	responsesRouter := router.Group("/v1")
+	responsesRouter.Use(middleware.RelayPanicRecover(), middleware.ResponsesAdapter(),
+		middleware.TokenAuth(), middleware.RateLimit(), middleware.Distribute())
+	{
+		responsesRouter.POST("/responses", controller.Relay)
 	}
 }

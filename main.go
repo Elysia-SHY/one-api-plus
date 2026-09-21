@@ -1,10 +1,10 @@
 package main
 
 import (
-	"embed"
 	"fmt"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
@@ -22,13 +22,14 @@ import (
 	"github.com/Elysia-SHY/one-api-plus/relay/adaptor/openai"
 	"github.com/Elysia-SHY/one-api-plus/router"
 	"github.com/Elysia-SHY/one-api-plus/service/alias"
+	"github.com/Elysia-SHY/one-api-plus/service/capability"
 	"github.com/Elysia-SHY/one-api-plus/service/health"
+	"github.com/Elysia-SHY/one-api-plus/service/mcp"
+	"github.com/Elysia-SHY/one-api-plus/service/modelgroup"
 	"github.com/Elysia-SHY/one-api-plus/service/modelsync"
+	"github.com/Elysia-SHY/one-api-plus/service/ratelimit"
 	"github.com/Elysia-SHY/one-api-plus/service/routing"
 )
-
-//go:embed web/build/*
-var buildFS embed.FS
 
 func main() {
 	common.Init()
@@ -111,6 +112,29 @@ func main() {
 		logger.SysError("failed to load model aliases: " + err.Error())
 	}
 	routing.LogStrategy()
+	// 第二阶段：能力库、模型组、Agent Gateway 的初始化
+	if err := capability.Refresh(); err != nil {
+		logger.SysError("failed to load model capabilities: " + err.Error())
+	}
+	if err := modelgroup.Refresh(); err != nil {
+		logger.SysError("failed to load model groups: " + err.Error())
+	}
+	if config.MCPEnabled {
+		if err := mcp.Load(); err != nil {
+			logger.SysError("failed to load mcp servers: " + err.Error())
+		}
+	}
+	if !config.LiteMode {
+		// 负载计量的残留清理：进程重启前后计数漂移的兜底
+		go func() {
+			ticker := time.NewTicker(10 * time.Minute)
+			defer ticker.Stop()
+			for range ticker.C {
+				routing.Cleanup()
+				ratelimit.CleanupMemory()
+			}
+		}()
+	}
 	if config.LiteMode {
 		logger.SysLog("lite mode enabled, background sync & health check are disabled")
 	} else {

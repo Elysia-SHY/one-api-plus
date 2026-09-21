@@ -20,5 +20,9 @@ const (
 	BaseURL           = "base_url"
 	AvailableModels   = "available_models"
 	KeyRequestBody    = "key_request_body"
+	// One API Plus 第二阶段
+	GroupResolvedFrom = "group_resolved_from"
+	OriginalModelName = "original_model_name"
+	ConcurrencyKey    = "concurrency_key"
 	SystemPrompt      = "system_prompt"
 )

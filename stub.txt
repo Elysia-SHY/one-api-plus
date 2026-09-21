@@ -1,0 +1,2 @@
+One API Plus Lite build placeholder.
+This file exists so the lite variant still has a non-empty embedded FS.

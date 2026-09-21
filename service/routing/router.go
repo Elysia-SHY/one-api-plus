@@ -19,13 +19,25 @@ type Candidate struct {
 	Channel   *model.Channel       `json:"channel"`
 	Health    *model.ChannelHealth `json:"health"`
 	PricePerM float64              `json:"price_per_million"`
-	Score     float64              `json:"score"`
+	Load      int64                `json:"load"`   // 当前并发数
+	Score     float64              `json:"score"`  // 综合分（0~100 量级）
+	Detail    CandidateScore       `json:"detail"` // 四维分项，便于排查为什么选了它
+}
+
+// CandidateScore 四维评分明细
+type CandidateScore struct {
+	Latency   float64 `json:"latency"`
+	Cost      float64 `json:"cost"`
+	Stability float64 `json:"stability"`
+	Load      float64 `json:"load"`
+	Health    float64 `json:"health"`
 }
 
 // Strategy 返回当前生效的路由策略
 func Strategy() string {
 	switch strings.ToLower(strings.TrimSpace(config.RoutingStrategy)) {
-	case config.StrategyWeight, config.StrategyLatency, config.StrategyCost, config.StrategyStability:
+	case config.StrategyWeight, config.StrategyLatency, config.StrategyCost,
+		config.StrategyStability, config.StrategyBalanced:
 		return strings.ToLower(strings.TrimSpace(config.RoutingStrategy))
 	default:
 		return config.StrategyPriority
@@ -56,6 +68,7 @@ func Candidates(group string, modelName string, exclude map[int]bool) ([]Candida
 			Channel:   channel,
 			Health:    health,
 			PricePerM: input,
+			Load:      GetLoad(channel.Id),
 		})
 	}
 	if len(candidates) == 0 {
@@ -72,6 +85,7 @@ func score(candidates []Candidate) {
 	strategy := Strategy()
 	maxLatency := 0
 	maxPrice := 0.0
+	maxLoad := int64(0)
 	for _, c := range candidates {
 		if c.Health.LatencyMs > maxLatency {
 			maxLatency = c.Health.LatencyMs
@@ -79,12 +93,23 @@ func score(candidates []Candidate) {
 		if c.PricePerM > maxPrice {
 			maxPrice = c.PricePerM
 		}
+		if c.Load > maxLoad {
+			maxLoad = c.Load
+		}
 	}
 	if maxLatency == 0 {
 		maxLatency = 1
 	}
 	if maxPrice == 0 {
 		maxPrice = 1
+	}
+	if maxLoad == 0 {
+		maxLoad = 1
+	}
+	weights := config.GetRoutingWeights()
+	softLoad := float64(config.RoutingMaxLoad)
+	if softLoad <= 0 {
+		softLoad = 32
 	}
 	for i := range candidates {
 		c := &candidates[i]
@@ -100,23 +125,80 @@ func score(candidates []Candidate) {
 		if c.Health.Status == config.HealthStatusDead {
 			healthFactor *= 0.05
 		}
+		// 四维打分，均归一化到 0~1，越大越好
+		detail := CandidateScore{
+			Latency:   1 - float64(minPositive(c.Health.LatencyMs, maxLatency))/float64(maxLatency),
+			Cost:      1 - (c.PricePerM / maxPrice),
+			Stability: 1 - clamp01(c.Health.ErrorRate),
+			Load:      loadScore(c.Load, maxLoad, softLoad),
+			Health:    healthFactor,
+		}
+		if c.Health.LatencyMs == 0 {
+			// 没有实测延迟时不惩罚也不奖励，取中位
+			detail.Latency = 0.5
+		}
+		c.Detail = detail
 		switch strategy {
+		case config.StrategyBalanced:
+			c.Score = (detail.Latency*weights.Latency +
+				detail.Cost*weights.Cost +
+				detail.Stability*weights.Stability +
+				detail.Load*weights.Load) * 100 * healthFactor
 		case config.StrategyLatency:
-			latencyScore := 1 - float64(minPositive(c.Health.LatencyMs, maxLatency))/float64(maxLatency)
-			c.Score = latencyScore*100 + healthFactor*20 + weight
+			c.Score = detail.Latency*100 + healthFactor*20 + weight
 		case config.StrategyCost:
-			priceScore := 1 - (c.PricePerM / maxPrice)
-			c.Score = priceScore*100 + healthFactor*20 + weight
+			c.Score = detail.Cost*100 + healthFactor*20 + weight
 		case config.StrategyStability:
-			stabilityScore := 1 - c.Health.ErrorRate
-			c.Score = stabilityScore*100 + healthFactor*20 + weight
+			c.Score = detail.Stability*100 + healthFactor*20 + weight
 		case config.StrategyWeight:
 			c.Score = weight * healthFactor
 		default:
 			// priority：先按渠道优先级，同级内按权重与健康度
 			c.Score = float64(c.Channel.GetPriority())*1000 + weight*healthFactor
 		}
+		// 负载感知：除 dedicated 的负载维度外，其余策略都对「已经很挤」的渠道做乘性惩罚
+		if config.RoutingLoadAware && strategy != config.StrategyBalanced {
+			c.Score *= loadPenalty(c.Load, softLoad)
+		}
 	}
+}
+
+// loadScore 把并发数折算成 0~1 分数：相对同批候选做归一化，同时对齐全局软上限
+func loadScore(load int64, maxLoad int64, softLoad float64) float64 {
+	if load <= 0 {
+		return 1
+	}
+	// 相对水位：本批候选里最闲的是 0，最挤的是 1
+	relative := float64(load) / float64(maxLoad)
+	// 绝对水位：贴近全局软上限说明已经接近渠道容量
+	absolute := float64(load) / softLoad
+	score := 1 - (relative*0.6 + absolute*0.4)
+	return clamp01(score)
+}
+
+// loadPenalty 给水线以上的渠道做乘性惩罚，最低保留 20% 分数，避免完全饿死
+func loadPenalty(load int64, softLoad float64) float64 {
+	if load <= 0 {
+		return 1
+	}
+	ratio := float64(load) / softLoad
+	if ratio <= 0.5 {
+		return 1
+	}
+	if ratio >= 2 {
+		return 0.2
+	}
+	return clamp01(1 - (ratio-0.5)*0.5)
+}
+
+func clamp01(v float64) float64 {
+	if v < 0 {
+		return 0
+	}
+	if v > 1 {
+		return 1
+	}
+	return v
 }
 
 func minPositive(v int, max int) int {
@@ -143,7 +225,7 @@ func SelectChannel(group string, modelName string, exclude map[int]bool) (*model
 	if err != nil {
 		return nil, err
 	}
-	if strategy == config.StrategyWeight || strategy == config.StrategyPriority {
+	if strategy == config.StrategyWeight || strategy == config.StrategyPriority || strategy == config.StrategyBalanced {
 		// 权重 / 优先级同级内做加权随机，避免所有流量打到同一条线
 		return weightedPick(candidates), nil
 	}

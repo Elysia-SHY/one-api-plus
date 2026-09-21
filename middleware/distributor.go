@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -8,11 +9,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/Elysia-SHY/one-api-plus/common"
 	"github.com/Elysia-SHY/one-api-plus/common/ctxkey"
 	"github.com/Elysia-SHY/one-api-plus/common/logger"
 	"github.com/Elysia-SHY/one-api-plus/model"
 	"github.com/Elysia-SHY/one-api-plus/relay/channeltype"
 	"github.com/Elysia-SHY/one-api-plus/service/alias"
+	"github.com/Elysia-SHY/one-api-plus/service/modelgroup"
 	"github.com/Elysia-SHY/one-api-plus/service/routing"
 )
 
@@ -48,6 +51,24 @@ func Distribute() func(c *gin.Context) {
 			requestModel = c.GetString(ctxkey.RequestModel)
 			// One API Plus: 先解析模型别名，再走智能路由
 			requestModel = alias.Resolve(requestModel)
+			// One API Plus: 模型组 —— 逻辑模型名解析成当前可用的真实模型
+			if modelgroup.IsGroup(requestModel) {
+				needs := parseRequestNeeds(c)
+				selected, ok := modelgroup.Select(requestModel, modelgroup.SelectOption{
+					NeedVision:    needs.vision,
+					NeedToolCall:  needs.toolCall,
+					NeedReasoning: needs.reasoning,
+					MinContext:    needs.minContext,
+					Available: func(name string) bool {
+						return hasChannel(userGroup, name)
+					},
+				})
+				if ok && selected != "" {
+					logger.Debugf(ctx, "model group %s resolved to %s", requestModel, selected)
+					c.Set(ctxkey.GroupResolvedFrom, requestModel)
+					requestModel = selected
+				}
+			}
 			c.Set(ctxkey.RequestModel, requestModel)
 			// One API Plus: 强制校验 API Key 的模型白名单
 			if allowed := c.GetString(ctxkey.AvailableModels); allowed != "" {
@@ -79,6 +100,55 @@ func Distribute() func(c *gin.Context) {
 		SetupContextForSelectedChannel(c, channel, requestModel)
 		c.Next()
 	}
+}
+
+// requestNeeds 描述一次请求对模型能力的硬性要求
+type requestNeeds struct {
+	vision     bool
+	toolCall   bool
+	reasoning  bool
+	minContext int
+}
+
+// parseRequestNeeds 从请求体里推断能力要求：带了图片必须视觉，带了 tools 必须工具调用，
+// 显式给了 reasoning_effort 说明要推理模型；上下文需求按输入文本长度粗估。
+func parseRequestNeeds(c *gin.Context) requestNeeds {
+	needs := requestNeeds{}
+	body, err := common.GetRequestBody(c)
+	if err != nil || len(body) == 0 {
+		return needs
+	}
+	var payload struct {
+		Messages  []json.RawMessage `json:"messages"`
+		Tools     []json.RawMessage `json:"tools"`
+		Functions []json.RawMessage `json:"functions"`
+		Reasoning json.RawMessage   `json:"reasoning_effort"`
+		MaxTokens int               `json:"max_tokens"`
+		Input     json.RawMessage   `json:"input"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return needs
+	}
+	if len(payload.Tools) > 0 || len(payload.Functions) > 0 {
+		needs.toolCall = true
+	}
+	if len(payload.Reasoning) > 2 {
+		needs.reasoning = true
+	}
+	raw := strings.ToLower(string(body))
+	if strings.Contains(raw, "image_url") || strings.Contains(raw, "input_image") ||
+		strings.Contains(raw, "base64") {
+		needs.vision = true
+	}
+	// 粗估：请求体每 4 个字符约 1 token，再留 2 倍余量给回复
+	needs.minContext = len(body)/2 + payload.MaxTokens*2
+	return needs
+}
+
+// hasChannel 判断某模型在当前分组下是否有可用渠道
+func hasChannel(group string, modelName string) bool {
+	channels, err := model.GetChannelsForModel(group, modelName)
+	return err == nil && len(channels) > 0
 }
 
 func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, modelName string) {

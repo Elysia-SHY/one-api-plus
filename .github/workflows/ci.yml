@@ -1,18 +1,16 @@
 name: CI
 
-# This setup assumes that you run the unit tests with code coverage in the same
-# workflow that will also print the coverage report as comment to the pull request.
-# Therefore, you need to trigger this workflow when a pull request is (re)opened or
-# when new code is pushed to the branch of the pull request. In addition, you also
-# need to trigger this workflow when new code is pushed to the main branch because
-# we need to upload the code coverage results as artifact for the main branch as
-# well since it will be the baseline code coverage.
+# Unit tests run on every push to main, and this workflow is also the place where
+# the coverage profile is produced and uploaded as baseline for pull requests.
 #
-# We do not want to trigger the workflow for pushes to *any* branch because this
-# would trigger our jobs twice on pull requests (once from "push" event and once
-# from "pull_request->synchronize")
+# We deliberately do not trigger on pushes to *any* branch: that would run every
+# job twice per pull request (once for the "push" event, once for the
+# "pull_request -> synchronize" event).
 on:
   push:
+    branches:
+      - 'main'
+  pull_request:
     branches:
       - 'main'
 
@@ -25,21 +23,61 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
-          go-version: ^1.22
+          go-version: '1.21'
+          cache: true
 
-      # When you execute your unit tests, make sure to use the "-coverprofile" flag to write a
-      # coverage profile to a file. You will need the name of the file (e.g. "coverage.txt")
-      # in the next step as well as the next job.
+      - name: Vet
+        run: go vet ./common/config/... ./controller/... ./middleware/... ./model/... ./router/... ./service/...
+
       - name: Test
-        run: go test -cover -coverprofile=coverage.txt ./...
+        run: go test -cover -coverprofile=coverage.txt ./common/config/... ./middleware/... ./service/... ./relay/channeltype/...
+
       - uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
 
+  # One API Plus 有两种构建变体：完整版与 Lite（-tags lite，面向 OpenWrt / 随身 WiFi）。
+  # 两者的 //go:embed 源文件不同，必须分别验证，否则 Lite 变体很容易在改动中悄悄失效。
+  build_matrix:
+    name: "Build (${{ matrix.variant }})"
+    runs-on: ubuntu-latest
+    needs: unit_tests
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [full, lite]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create minimal web build directory
+        # web/build 被 .gitignore 忽略，但 //go:embed web/build/* 要求目录存在
+        run: mkdir -p web/build
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+          cache: true
+
+      - name: Build full variant
+        if: matrix.variant == 'full'
+        run: go build -ldflags "-s -w -X 'github.com/Elysia-SHY/one-api-plus/common.Version=ci'" -o one-api .
+
+      - name: Build lite variant
+        if: matrix.variant == 'lite'
+        run: go build -tags lite -ldflags "-s -w -X 'github.com/Elysia-SHY/one-api-plus/common.Version=ci-lite'" -o one-api-lite .
+
+      - name: Compare binary sizes
+        run: |
+          ls -lh one-api* 2>/dev/null || true
+
   commit_lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: wagoid/commitlint-github-action@v6

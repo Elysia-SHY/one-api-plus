@@ -88,6 +88,29 @@ func InitOptionMap() {
 	config.OptionMap["AliasEnabled"] = strconv.FormatBool(config.AliasEnabled)
 	config.OptionMap["BudgetEnabled"] = strconv.FormatBool(config.BudgetEnabled)
 	config.OptionMap["LiteMode"] = strconv.FormatBool(config.LiteMode)
+	// ---- One API Plus 第二阶段（AI Gateway）----
+	config.OptionMap["CapabilityEnabled"] = strconv.FormatBool(config.CapabilityEnabled)
+	config.OptionMap["ModelGroupEnabled"] = strconv.FormatBool(config.ModelGroupEnabled)
+	config.OptionMap["ModelGroupStrategy"] = config.ModelGroupStrategy
+	config.OptionMap["RoutingLoadAware"] = strconv.FormatBool(config.RoutingLoadAware)
+	config.OptionMap["RoutingMaxLoad"] = strconv.Itoa(config.RoutingMaxLoad)
+	config.OptionMap["RoutingWeights"] = config.RoutingWeightsRaw
+	config.OptionMap["PromptCacheEnabled"] = strconv.FormatBool(config.PromptCacheEnabled)
+	config.OptionMap["PromptCacheTTL"] = strconv.Itoa(config.PromptCacheTTL)
+	config.OptionMap["PromptCacheMinTokens"] = strconv.Itoa(config.PromptCacheMinTok)
+	config.OptionMap["AgentGatewayEnabled"] = strconv.FormatBool(config.AgentGatewayEnabled)
+	config.OptionMap["ToolCallEnabled"] = strconv.FormatBool(config.ToolCallEnabled)
+	config.OptionMap["MCPEnabled"] = strconv.FormatBool(config.MCPEnabled)
+	config.OptionMap["MCPServers"] = config.MCPServersRaw
+	config.OptionMap["MemoryEnabled"] = strconv.FormatBool(config.MemoryEnabled)
+	config.OptionMap["MemoryMaxItems"] = strconv.Itoa(config.MemoryMaxItems)
+	config.OptionMap["ResponsesAPIEnabled"] = strconv.FormatBool(config.ResponsesAPIEnabled)
+	config.OptionMap["DashboardEnabled"] = strconv.FormatBool(config.DashboardEnabled)
+	config.OptionMap["RateLimitEnabled"] = strconv.FormatBool(config.RateLimitEnabled)
+	config.OptionMap["RateLimitQPM"] = strconv.Itoa(config.RateLimitQPM)
+	config.OptionMap["RateLimitBurst"] = strconv.Itoa(config.RateLimitBurst)
+	config.OptionMap["RateLimitPerModel"] = strconv.FormatBool(config.RateLimitPerModel)
+	config.OptionMap["RateLimitConcurrent"] = strconv.Itoa(config.RateLimitConcurrent)
 	config.OptionMapRWMutex.Unlock()
 	loadOptionsFromDatabase()
 }
@@ -278,6 +301,53 @@ func updateOptionMap(key string, value string) (err error) {
 		config.BudgetEnabled = value == "true"
 	case "LiteMode":
 		config.LiteMode = value == "true"
+	// ---- One API Plus 第二阶段（AI Gateway）----
+	case "CapabilityEnabled":
+		config.CapabilityEnabled = value == "true"
+	case "ModelGroupEnabled":
+		config.ModelGroupEnabled = value == "true"
+	case "ModelGroupStrategy":
+		config.ModelGroupStrategy = value
+	case "RoutingLoadAware":
+		config.RoutingLoadAware = value == "true"
+	case "RoutingMaxLoad":
+		config.RoutingMaxLoad, _ = strconv.Atoi(value)
+	case "RoutingWeights":
+		config.RoutingWeightsRaw = value
+		err = config.SetRoutingWeights(value)
+	case "PromptCacheEnabled":
+		config.PromptCacheEnabled = value == "true"
+	case "PromptCacheTTL":
+		config.PromptCacheTTL, _ = strconv.Atoi(value)
+	case "PromptCacheMinTokens":
+		config.PromptCacheMinTok, _ = strconv.Atoi(value)
+	case "AgentGatewayEnabled":
+		config.AgentGatewayEnabled = value == "true"
+	case "ToolCallEnabled":
+		config.ToolCallEnabled = value == "true"
+	case "MCPEnabled":
+		config.MCPEnabled = value == "true"
+	case "MCPServers":
+		config.MCPServersRaw = value
+		err = config.SetMCPServers(value)
+	case "MemoryEnabled":
+		config.MemoryEnabled = value == "true"
+	case "MemoryMaxItems":
+		config.MemoryMaxItems, _ = strconv.Atoi(value)
+	case "ResponsesAPIEnabled":
+		config.ResponsesAPIEnabled = value == "true"
+	case "DashboardEnabled":
+		config.DashboardEnabled = value == "true"
+	case "RateLimitEnabled":
+		config.RateLimitEnabled = value == "true"
+	case "RateLimitQPM":
+		config.RateLimitQPM, _ = strconv.Atoi(value)
+	case "RateLimitBurst":
+		config.RateLimitBurst, _ = strconv.Atoi(value)
+	case "RateLimitPerModel":
+		config.RateLimitPerModel = value == "true"
+	case "RateLimitConcurrent":
+		config.RateLimitConcurrent, _ = strconv.Atoi(value)
 	}
 	return err
 }

@@ -20,6 +20,7 @@ import (
 	"github.com/Elysia-SHY/one-api-plus/relay/model"
 	"github.com/Elysia-SHY/one-api-plus/relay/relaymode"
 	"github.com/Elysia-SHY/one-api-plus/service/health"
+	"github.com/Elysia-SHY/one-api-plus/service/promptcache"
 	"github.com/Elysia-SHY/one-api-plus/service/responsecache"
 	"github.com/Elysia-SHY/one-api-plus/service/routing"
 	"github.com/gin-gonic/gin"
@@ -79,6 +80,29 @@ func Relay(c *gin.Context) {
 	}
 	channelId := c.GetInt(ctxkey.ChannelId)
 	userId := c.GetInt(ctxkey.Id)
+	channelName := c.GetString(ctxkey.ChannelName)
+
+	// 第二阶段：负载计量。必须在任何重试之前 Enter，在整条链路结束时 Leave，
+	// 这样路由看到的「在途请求数」才包含重试叠加的真实压力。
+	routing.EnterLoad(channelId)
+	defer func() {
+		routing.LeaveLoad(c.GetInt(ctxkey.ChannelId))
+	}()
+
+	// One API Plus：前缀级上下文缓存（命中率高于整请求缓存，优先命中）
+	promptKey := ""
+	if promptcache.Enabled() {
+		body, _ := common.GetRequestBody(c)
+		if key, ok := promptcache.Key(userId, channelId, c.Request.URL.Path, body); ok {
+			promptKey = key
+			if cached, hit := promptcache.Get(key); hit {
+				c.Header("X-One-Api-Plus-Prompt-Cache", "hit")
+				c.Header("Content-Type", "application/json")
+				c.String(http.StatusOK, cached)
+				return
+			}
+		}
+	}
 
 	// One API Plus：完全相同的非流式请求直接复用缓存，不再消耗额度
 	cacheKey := ""
@@ -101,6 +125,14 @@ func Relay(c *gin.Context) {
 	bizErr := relayHelper(c, relayMode)
 	if bizErr == nil {
 		monitor.Emit(channelId, true)
+		// 第二阶段：成功也要回写健康度，否则没有探测任务时健康表永远空着
+		health.RecordResult(channelId, channelName, true, 0, "")
+		if promptKey != "" && recorder != nil {
+			if responsecache.ShouldCacheResponse(c.Writer.Status(), recorder.Body()) {
+				c.Header("X-One-Api-Plus-Prompt-Cache", "miss")
+				promptcache.Set(promptKey, recorder.Body())
+			}
+		}
 		if recorder != nil {
 			c.Header("X-One-Api-Plus-Cache", "miss")
 			if responsecache.ShouldCacheResponse(c.Writer.Status(), recorder.Body()) {
@@ -110,7 +142,6 @@ func Relay(c *gin.Context) {
 		return
 	}
 	lastFailedChannelId := channelId
-	channelName := c.GetString(ctxkey.ChannelName)
 	group := c.GetString(ctxkey.Group)
 	originalModel := c.GetString(ctxkey.OriginalModel)
 	go processChannelRelayError(ctx, userId, channelId, channelName, *bizErr)
