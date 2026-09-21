@@ -35,7 +35,12 @@ jobs:
         run: |
           cd web/default
           npm install
-          REACT_APP_VERSION="$(git describe --tags 2>/dev/null || cat ../../VERSION)" npm run build
+          # DISABLE_ESLINT_PLUGIN 必须带着：CRA 的 eslint 插件在当前依赖组合下
+          # 会报 "Environment key jest/globals is unknown"，Linux/macOS 的
+          # build.sh 里就是靠它绕开的，Windows 这条路径绕开不了。
+          DISABLE_ESLINT_PLUGIN=true \
+            REACT_APP_VERSION="$(git describe --tags 2>/dev/null || cat ../../VERSION)" \
+            npm run build
           cd ../..
 
       - name: Set up Go
