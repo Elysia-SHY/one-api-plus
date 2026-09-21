@@ -115,6 +115,10 @@ func RelayImageHelper(c *gin.Context, relayMode int) *relaymodel.ErrorWithStatus
 	// map model name
 	var isModelMapped bool
 	meta.OriginModelName = imageRequest.Model
+	if reqModel := c.GetString(ctxkey.RequestModel); reqModel != "" {
+		imageRequest.Model = reqModel
+		isModelMapped = true
+	}
 	imageRequest.Model, isModelMapped = getMappedModelName(imageRequest.Model, meta.ModelMapping)
 	meta.ActualModelName = imageRequest.Model
 

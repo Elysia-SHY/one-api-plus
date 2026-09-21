@@ -11,7 +11,7 @@ import (
 	"github.com/Elysia-SHY/one-api-plus/common/random"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
-	"gorm.io/driver/sqlite"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"os"
 	"strings"

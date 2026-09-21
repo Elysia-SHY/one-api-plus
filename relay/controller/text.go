@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/Elysia-SHY/one-api-plus/common/config"
+	"github.com/Elysia-SHY/one-api-plus/common/ctxkey"
 	"github.com/Elysia-SHY/one-api-plus/common/logger"
 	"github.com/Elysia-SHY/one-api-plus/relay"
 	"github.com/Elysia-SHY/one-api-plus/relay/adaptor"
@@ -35,6 +36,9 @@ func RelayTextHelper(c *gin.Context) *model.ErrorWithStatusCode {
 
 	// map model name
 	meta.OriginModelName = textRequest.Model
+	if reqModel := c.GetString(ctxkey.RequestModel); reqModel != "" {
+		textRequest.Model = reqModel
+	}
 	textRequest.Model, _ = getMappedModelName(textRequest.Model, meta.ModelMapping)
 	meta.ActualModelName = textRequest.Model
 	// set system prompt if not empty
