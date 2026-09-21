@@ -114,7 +114,9 @@ export default function Capability() {
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {items.map((it, i) => (
+            {items
+              .filter((it) => !q || (it.model_name || '').toLowerCase().includes(q.toLowerCase()))
+              .map((it, i) => (
               <Table.Row key={i}>
                 <Table.Cell>{it.model_name}</Table.Cell>
                 <Table.Cell>{it.context_length || '-'}</Table.Cell>

@@ -4,7 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/pkoukk/tiktoken-go"
 
@@ -21,19 +24,47 @@ var defaultTokenEncoder *tiktoken.Tiktoken
 
 func InitTokenEncoders() {
 	logger.SysLog("initializing token encoders")
+	// 用带超时/缓存/镜像的加载器替换 tiktoken-go 默认的无超时 http.Get，
+	// 避免国内网络下词表下载阻塞导致服务卡死在启动阶段。
+	tiktoken.SetBpeLoader(newTimeoutBpeLoader())
+	// 给整个初始化设总预算，避免 3 个编码器各自超时导致启动被拖到很久。
+	done := make(chan error, 1)
+	go func() { done <- initTokenEncodersOnce() }()
+	budget := tokenEncoderInitBudget()
+	select {
+	case err := <-done:
+		if err != nil {
+			logger.SysError(fmt.Sprintf("token encoder 初始化未完成，已降级为按需重试: %s", err.Error()))
+		}
+	case <-time.After(budget):
+		logger.SysError(fmt.Sprintf("token encoder 初始化超过 %s 预算，已跳过（服务正常启动，首次使用相关模型时再尝试；可设 TIKTOKEN_CACHE_DIR 或 TIKTOKEN_BPE_BASE_URL 加速）", budget))
+	}
+}
+
+// tokenEncoderInitBudget 初始化总超时预算，默认 45s，可用 TIKTOKEN_INIT_TIMEOUT 覆盖。
+func tokenEncoderInitBudget() time.Duration {
+	if v := os.Getenv("TIKTOKEN_INIT_TIMEOUT"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return time.Duration(n) * time.Second
+		}
+	}
+	return 45 * time.Second
+}
+
+// initTokenEncodersOnce 尝试构建三个常用编码器；任一步失败立即返回错误，不阻塞。
+func initTokenEncodersOnce() error {
 	gpt35TokenEncoder, err := tiktoken.EncodingForModel("gpt-3.5-turbo")
 	if err != nil {
-		logger.FatalLog(fmt.Sprintf("failed to get gpt-3.5-turbo token encoder: %s, "+
-			"if you are using in offline environment, please set TIKTOKEN_CACHE_DIR to use exsited files, check this link for more information: https://stackoverflow.com/questions/76106366/how-to-use-tiktoken-in-offline-mode-computer ", err.Error()))
+		return fmt.Errorf("gpt-3.5-turbo encoder: %w", err)
 	}
 	defaultTokenEncoder = gpt35TokenEncoder
 	gpt4oTokenEncoder, err := tiktoken.EncodingForModel("gpt-4o")
 	if err != nil {
-		logger.FatalLog(fmt.Sprintf("failed to get gpt-4o token encoder: %s", err.Error()))
+		return fmt.Errorf("gpt-4o encoder: %w", err)
 	}
 	gpt4TokenEncoder, err := tiktoken.EncodingForModel("gpt-4")
 	if err != nil {
-		logger.FatalLog(fmt.Sprintf("failed to get gpt-4 token encoder: %s", err.Error()))
+		return fmt.Errorf("gpt-4 encoder: %w", err)
 	}
 	for model := range billingratio.ModelRatio {
 		if strings.HasPrefix(model, "gpt-3.5") {
@@ -47,6 +78,7 @@ func InitTokenEncoders() {
 		}
 	}
 	logger.SysLog("token encoders initialized")
+	return nil
 }
 
 func getTokenEncoder(model string) *tiktoken.Tiktoken {
@@ -67,7 +99,8 @@ func getTokenEncoder(model string) *tiktoken.Tiktoken {
 }
 
 func getTokenNum(tokenEncoder *tiktoken.Tiktoken, text string) int {
-	if config.ApproximateTokenEnabled {
+	if config.ApproximateTokenEnabled || tokenEncoder == nil {
+		// 无可用编码器时退化为近似估算，避免空指针 panic
 		return int(float64(len(text)) * 0.38)
 	}
 	return len(tokenEncoder.Encode(text, nil, nil))

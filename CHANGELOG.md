@@ -3,6 +3,25 @@
 > 基于 fork 的 [one-api](https://github.com/songquanpeng/one-api) 改造，定位为「小型 OpenRouter + Agent Gateway」。
 > 所有版本日期均为 2026-09-21（同一天内的快速迭代）。
 
+## [v0.3.2] - 2026-09-21
+
+### 修复（启动卡死 + 前端字段错位，来自全仓库审查）
+- **启动卡死在「initializing token encoders」**（严重）：上游沿用的 `tiktoken-go` 默认 BPE 加载器用**无超时的 `http.Get`** 直连 `openaipublic.blob.core.windows.net`。国内网络下该域极慢，导致进程永久阻塞、服务起不来（实测卡死）。修复：
+  - 新增 `relay/adaptor/openai/bpeloader.go`：带**超时 + 本地缓存 + 可换镜像源**的 BPE 加载器，经 `tiktoken.SetBpeLoader` 注入。支持 `TIKTOKEN_DOWNLOAD_TIMEOUT`（默认 30s）、`TIKTOKEN_BPE_BASE_URL`（镜像）、沿用 `TIKTOKEN_CACHE_DIR` / `DATA_GYM_CACHE_DIR`。
+  - `InitTokenEncoders` 增加**总超时预算**（`TIKTOKEN_INIT_TIMEOUT`，默认 45s）与**失败降级**：下载不到就跳过，服务照常启动，不再阻塞；首次实际用到相关模型时再按需重试。
+  - `getTokenNum` 增加 `tokenEncoder == nil` 兜底（退化为近似估算），避免无编码器时空指针 panic。
+- **实时负载页空白**：`GET /api/plus/load` 返回的 `channels` 是 `map[渠道ID]在途数`，前端 Dashboard 误当数组遍历（`c.name/c.active/c.max`），永远渲染不出数据。已改为按 map 渲染。
+- **预算功能读写全错**：`UserBudget` 结构体字段是 `daily_limit` / `monthly_limit`，前端 Config 页读写用的是 `daily_quota` / `monthly_quota`，保存与回显均失效。已修正。
+- **能力库搜索框无效**：Capability 页的模型名搜索框未接入过滤，已改为按名称本地过滤。
+
+### 审查结论（其余项）
+- `go build ./...`（默认 + `-tags lite`）、`go vet`、CI 测试套件（config/middleware/service/channeltype）全绿。
+- 前端 34 个 `/api/plus/*` 调用与后端路由逐一比对，无幽灵端点；`catalog` / `capability` / `ratelimit` / `responses` / `memory` / `mcp` 等字段经交叉核对一致。
+- 已发布二进制实测可正常启动（SQLite 建库 + 迁移 + 建 root 账号），版本号正确注入。
+- 已知非本项目问题：`common/image` 的 `TestDecode` 依赖外部 Wikimedia 大图（上游遗留、且不在 CI 测试范围内），本机网络下会失败，不影响构建与运行。
+
+---
+
 ## [v0.3.1] - 2026-09-21
 
 ### 修复（前端字段错位导致功能不可用）

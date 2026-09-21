@@ -35,8 +35,8 @@ export default function Config() {
         setBudget(b.data.budget);
         setBudgetForm({
           user_id: b.data.budget?.user_id || '',
-          daily: b.data.budget?.daily_quota || '',
-          monthly: b.data.budget?.monthly_quota || '',
+          daily: b.data.budget?.daily_limit || '',
+          monthly: b.data.budget?.monthly_limit || '',
         });
       }
     } catch (e) {
@@ -105,8 +105,8 @@ export default function Config() {
     try {
       const env = await PlusAPI.updateBudget({
         user_id: Number(budgetForm.user_id),
-        daily_quota: Number(budgetForm.daily) || 0,
-        monthly_quota: Number(budgetForm.monthly) || 0,
+        daily_limit: Number(budgetForm.daily) || 0,
+        monthly_limit: Number(budgetForm.monthly) || 0,
       });
       if (!env.success) return showError(env.message);
       showSuccess('已更新预算');

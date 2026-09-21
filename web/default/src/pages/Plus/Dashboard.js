@@ -79,26 +79,31 @@ export default function Dashboard() {
         <Table celled striped>
           <Table.Header>
             <Table.Row>
-              <Table.HeaderCell>渠道</Table.HeaderCell>
-              <Table.HeaderCell>当前并发</Table.HeaderCell>
-              <Table.HeaderCell>上限</Table.HeaderCell>
+              <Table.HeaderCell>渠道 ID</Table.HeaderCell>
+              <Table.HeaderCell>当前在途请求</Table.HeaderCell>
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {(load.channels || []).map((c, i) => (
-              <Table.Row key={i}>
-                <Table.Cell>{c.name || c.id}</Table.Cell>
+            {Object.entries(load.channels || {}).map(([cid, inflight]) => (
+              <Table.Row key={cid}>
+                <Table.Cell>{cid}</Table.Cell>
                 <Table.Cell>
-                  <Label color={c.active >= (c.max || 1) ? 'red' : 'blue'}>{c.active}</Label>
+                  <Label color={inflight > 0 ? 'blue' : 'grey'}>{inflight}</Label>
                 </Table.Cell>
-                <Table.Cell>{c.max}</Table.Cell>
               </Table.Row>
             ))}
+            {Object.keys(load.channels || {}).length === 0 && (
+              <Table.Row>
+                <Table.Cell colSpan='2' textAlign='center'>
+                  当前无在途请求
+                </Table.Cell>
+              </Table.Row>
+            )}
             <Table.Row>
               <Table.Cell>
                 <b>总计</b>
               </Table.Cell>
-              <Table.Cell colSpan='2'>{load.total}</Table.Cell>
+              <Table.Cell>{load.total}</Table.Cell>
             </Table.Row>
           </Table.Body>
         </Table>
