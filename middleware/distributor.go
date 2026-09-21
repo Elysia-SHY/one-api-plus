@@ -51,6 +51,7 @@ func Distribute() func(c *gin.Context) {
 			requestModel = c.GetString(ctxkey.RequestModel)
 			// One API Plus: 先解析模型别名，再走智能路由
 			requestModel = alias.Resolve(requestModel)
+			originalRequestModel := requestModel
 			// One API Plus: 模型组 —— 逻辑模型名解析成当前可用的真实模型
 			if modelgroup.IsGroup(requestModel) {
 				needs := parseRequestNeeds(c)
@@ -70,11 +71,14 @@ func Distribute() func(c *gin.Context) {
 				}
 			}
 			c.Set(ctxkey.RequestModel, requestModel)
-			// One API Plus: 强制校验 API Key 的模型白名单
+			// One API Plus: 强制校验 API Key 的模型白名单。
+			// 令牌里可能配置的是「模型组逻辑名」，此时 requestModel 已被解析为真实模型名，
+			// 因此逻辑名或解析后的真实名任一命中白名单即放行。
 			if allowed := c.GetString(ctxkey.AvailableModels); allowed != "" {
 				permitted := false
 				for _, m := range strings.Split(allowed, ",") {
-					if strings.TrimSpace(m) == requestModel {
+					m = strings.TrimSpace(m)
+					if m == requestModel || m == originalRequestModel {
 						permitted = true
 						break
 					}

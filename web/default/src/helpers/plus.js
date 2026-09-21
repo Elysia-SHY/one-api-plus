@@ -43,8 +43,7 @@ const PlusAPI = {
   updateBudget: (body) => put(`${B}/budget`, body),
 
   // 仪表盘 / 负载 / 路由
-  getDashboard: (params = {}) => get(`${B}/dashboard`, params),
-  getLoad: () => get(`${B}/load`),
+  getDashboard: (params = {}) => get(`${B}/dashboard`, params),  getLoad: () => get(`${B}/load`),
   getRouting: () => get(`${B}/routing`),
   updateRouting: (body) => put(`${B}/routing`, body),
 
@@ -66,6 +65,10 @@ const PlusAPI = {
   removeModelGroup: (id) => del(`${B}/group/model/${id}`),
   addGroupMember: (body) => post(`${B}/group/model/member`, body),
   removeGroupMember: (id) => del(`${B}/group/model/member/${id}`),
+  autoModelGroups: (body = {}) => post(`${B}/group/model/auto`, body),
+
+  // 当前用户可用的模型（含模型组逻辑名）
+  getUserAvailableModels: () => API.get('/api/user/available_models').then((r) => r.data),
 
   // MCP
   getMCPServers: () => get(`${B}/mcp`),

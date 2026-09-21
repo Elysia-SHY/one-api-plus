@@ -324,6 +324,43 @@ func RemoveGroupMember(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "已删除"})
 }
 
+// AutoModelGroups 一键按当前分组下真实可用的模型自动建组 / 刷新组。
+//
+// 请求体（均可省略）：
+//
+//	{"group":"default", "dry_run": false}
+//
+// 返回本次新建 / 更新的组，以及推荐用户勾选的逻辑组名列表。
+func AutoModelGroups(c *gin.Context) {
+	var req struct {
+		Group  string `json:"group"`
+		DryRun bool   `json:"dry_run"`
+	}
+	_ = c.ShouldBindJSON(&req)
+
+	userGroup := strings.TrimSpace(req.Group)
+	if userGroup == "" {
+		// 未显式指定分组时，按「默认分组」+「当前登录用户所在分组」两个视角取并集，
+		// 保证管理员与普通用户看到的结果都符合自己的实际可用范围。
+		userGroup = c.GetString(ctxkey.Group)
+	}
+	if userGroup == "" {
+		userGroup = "default"
+	}
+
+	result, err := modelgroup.AutoGroups(c.Request.Context(), userGroup, req.DryRun)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	msg := fmt.Sprintf("已按分组 %s 下 %d 个可用模型整理出 %d 个逻辑组",
+		userGroup, result.Models, len(result.GroupNames))
+	if req.DryRun {
+		msg = "预演结果（未写入数据库）：" + msg
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": msg, "data": result})
+}
+
 // ---------------------------------------------------------------------------
 // MCP 网关
 // ---------------------------------------------------------------------------

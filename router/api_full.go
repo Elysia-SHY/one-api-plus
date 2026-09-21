@@ -34,6 +34,8 @@ func registerPlus2Routes(plusRoute *gin.RouterGroup) {
 	plusRoute.DELETE("/group/model/:id", middleware.AdminAuth(), controller.RemoveModelGroup)
 	plusRoute.POST("/group/model/member", middleware.AdminAuth(), controller.AddGroupMember)
 	plusRoute.DELETE("/group/model/member/:id", middleware.AdminAuth(), controller.RemoveGroupMember)
+	// 一键自动建组：按当前分组下的可用模型自动聚合出逻辑组，用户令牌里勾逻辑名即可
+	plusRoute.POST("/group/model/auto", middleware.AdminAuth(), controller.AutoModelGroups)
 	// MCP 网关
 	plusRoute.GET("/mcp", middleware.AdminAuth(), controller.GetMCPServers)
 	plusRoute.POST("/mcp", middleware.AdminAuth(), controller.UpsertMCPServer)

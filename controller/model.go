@@ -11,6 +11,7 @@ import (
 	"github.com/Elysia-SHY/one-api-plus/relay/channeltype"
 	"github.com/Elysia-SHY/one-api-plus/relay/meta"
 	relaymodel "github.com/Elysia-SHY/one-api-plus/relay/model"
+	"github.com/Elysia-SHY/one-api-plus/service/modelgroup"
 	"net/http"
 	"strings"
 )
@@ -132,16 +133,26 @@ func ListAllModels(c *gin.Context) {
 func ListModels(c *gin.Context) {
 	ctx := c.Request.Context()
 	var availableModels []string
+	var userGroup string
 	if c.GetString(ctxkey.AvailableModels) != "" {
 		availableModels = strings.Split(c.GetString(ctxkey.AvailableModels), ",")
 	} else {
 		userId := c.GetInt(ctxkey.Id)
-		userGroup, _ := model.CacheGetUserGroup(userId)
+		userGroup, _ = model.CacheGetUserGroup(userId)
 		availableModels, _ = model.CacheGetGroupModels(ctx, userGroup)
 	}
+	if userGroup == "" {
+		userGroup = c.GetString(ctxkey.Group)
+	}
+	if userGroup == "" {
+		userGroup = "default"
+	}
+	// One API Plus: /v1/models 也要把「模型组逻辑名」暴露给客户端，
+	// 这样 Cherry Studio / NextChat / Codex 等的模型下拉里能直接看到逻辑名。
+	availableModels = appendModelGroupNames(userGroup, availableModels)
 	modelSet := make(map[string]bool)
 	for _, availableModel := range availableModels {
-		modelSet[availableModel] = true
+		modelSet[strings.TrimSpace(availableModel)] = true
 	}
 	availableOpenAIModels := make([]OpenAIModels, 0)
 	for _, model := range models {
@@ -204,10 +215,67 @@ func GetUserAvailableModels(c *gin.Context) {
 		})
 		return
 	}
+	// One API Plus: 把「模型组」逻辑名也纳入可选列表，用户令牌里可直接勾选逻辑名，
+	// 由 distributor 在请求时自动解析到当前可用的真实模型。
+	// 仅包含在当前分组下至少有一个成员模型可用的组。
+	models = appendModelGroupNames(userGroup, models)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
 		"data":    models,
 	})
 	return
+}
+
+// appendModelGroupNames 把当前分组下可用的模型组逻辑名并入模型列表（去重）。
+//
+// userGroup 为空或取不到时退化为「不做分组可用性过滤」，只按组自身的开关判断，
+// 避免管理员/根令牌场景下逻辑名凭空消失。
+func appendModelGroupNames(userGroup string, models []string) []string {
+	seen := make(map[string]bool, len(models))
+	out := make([]string, 0, len(models))
+	for _, m := range models {
+		m = strings.TrimSpace(m)
+		if m == "" || seen[m] {
+			continue
+		}
+		seen[m] = true
+		out = append(out, m)
+	}
+	for _, g := range modelgroup.All() {
+		if g == nil || g.GroupName == "" || !g.Enabled {
+			continue
+		}
+		if seen[g.GroupName] {
+			continue
+		}
+		if groupUsable(userGroup, g) {
+			out = append(out, g.GroupName)
+			seen[g.GroupName] = true
+		}
+	}
+	return out
+}
+
+// groupUsable 判断一个模型组在当前分组下是否可用。
+//
+// 组名本身不会出现在 abilities 表里，无法直接查渠道，因此判定口径是
+// 「组内至少有一个启用的成员模型，在当前分组下有启用渠道」。
+func groupUsable(userGroup string, g *model.ModelGroup) bool {
+	if len(g.Members) == 0 {
+		return false
+	}
+	for _, m := range g.Members {
+		if m == nil || !m.Enabled || strings.TrimSpace(m.ModelName) == "" {
+			continue
+		}
+		if userGroup == "" {
+			// 无法确定分组时不做过严过滤：有启用的成员即视为可用
+			return true
+		}
+		if channels, err := model.GetChannelsForModel(userGroup, m.ModelName); err == nil && len(channels) > 0 {
+			return true
+		}
+	}
+	return false
 }
