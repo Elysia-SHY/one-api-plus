@@ -18,6 +18,7 @@ const PlusAPI = {
   enableModel: (body) => post(`${B}/catalog/enable`, body),
   syncModels: (scope) => post(`${B}/sync${scope ? `?scope=${scope}` : ''}`),
   syncChannel: (id) => post(`${B}/sync/${id}`),
+  fetchChannelModels: (id) => get(`${B}/catalog/fetch/${id}`),
 
   // 健康
   getHealthList: () => get(`${B}/health`),

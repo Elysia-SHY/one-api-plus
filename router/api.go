@@ -126,6 +126,7 @@ func SetApiRouter(router *gin.Engine) {
 			plusRoute.POST("/catalog/enable", middleware.AdminAuth(), controller.EnableModel)
 			plusRoute.POST("/sync", middleware.AdminAuth(), controller.SyncModels)
 			plusRoute.POST("/sync/:id", middleware.AdminAuth(), controller.SyncChannelModels)
+			plusRoute.GET("/catalog/fetch/:id", middleware.AdminAuth(), controller.FetchChannelUpstreamModels)
 			plusRoute.GET("/health", middleware.AdminAuth(), controller.GetHealthList)
 			plusRoute.POST("/health/check", middleware.AdminAuth(), controller.CheckChannels)
 			plusRoute.GET("/health/channel/:id", middleware.AdminAuth(), controller.GetChannelHealth)

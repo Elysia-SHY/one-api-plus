@@ -25,7 +25,7 @@ export default function Group() {
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState('');
   const [strategy, setStrategy] = useState('first_available');
-  const [member, setMember] = useState({ group_id: '', model: '', weight: 1 });
+  const [member, setMember] = useState({ group_name: '', model: '', weight: 1 });
 
   const load = async () => {
     setLoading(true);
@@ -48,7 +48,7 @@ export default function Group() {
   const addGroup = async () => {
     if (!name) return showError('组名不能为空');
     try {
-      const env = await PlusAPI.addModelGroup({ name, strategy });
+      const env = await PlusAPI.addModelGroup({ group_name: name, strategy });
       if (!env.success) return showError(env.message);
       showSuccess('已创建模型组');
       setName('');
@@ -69,16 +69,16 @@ export default function Group() {
   };
 
   const addMember = async () => {
-    if (!member.group_id || !member.model) return showError('请填写组 ID 与模型名');
+    if (!member.group_name || !member.model) return showError('请选择组并填写模型名');
     try {
       const env = await PlusAPI.addGroupMember({
-        group_id: Number(member.group_id),
-        model: member.model,
+        group_name: member.group_name,
+        model_name: member.model,
         weight: Number(member.weight) || 1,
       });
       if (!env.success) return showError(env.message);
       showSuccess('已添加成员');
-      setMember({ group_id: '', model: '', weight: 1 });
+      setMember({ group_name: '', model: '', weight: 1 });
       load();
     } catch (e) {
       showError(e.message);
@@ -101,7 +101,16 @@ export default function Group() {
         </div>
         <Header as='h4'>添加成员</Header>
         <div style={{ display: 'flex', gap: '0.5em', flexWrap: 'wrap', alignItems: 'center' }}>
-          <Input placeholder='组 ID' value={member.group_id} onChange={(e, d) => setMember({ ...member, group_id: d.value })} style={{ width: '120px' }} />
+          <Dropdown
+            selection
+            search
+            allowAdditions
+            placeholder='选择或输入组名'
+            value={member.group_name}
+            options={groups.map((g) => ({ key: g.group_name, text: g.group_name, value: g.group_name }))}
+            onChange={(e, d) => setMember({ ...member, group_name: d.value })}
+            style={{ width: '200px' }}
+          />
           <Input placeholder='真实模型名' value={member.model} onChange={(e, d) => setMember({ ...member, model: d.value })} style={{ width: '220px' }} />
           <Input placeholder='权重' value={member.weight} onChange={(e, d) => setMember({ ...member, weight: d.value })} style={{ width: '100px' }} />
           <Button onClick={addMember}>添加</Button>
@@ -128,13 +137,13 @@ export default function Group() {
             {groups.map((g) => (
               <Table.Row key={g.id}>
                 <Table.Cell>{g.id}</Table.Cell>
-                <Table.Cell>{g.name}</Table.Cell>
+                <Table.Cell>{g.group_name}</Table.Cell>
                 <Table.Cell>{g.strategy}</Table.Cell>
                 <Table.Cell>{g.enabled ? <Label color='green' size='small'>是</Label> : <Label size='small'>否</Label>}</Table.Cell>
                 <Table.Cell>
                   {(g.members || []).map((m, i) => (
                     <Label key={i} style={{ margin: '2px' }}>
-                      {m.model} ×{m.weight}
+                      {m.model_name} ×{m.weight}
                     </Label>
                   ))}
                   {(!g.members || g.members.length === 0) && '-'}

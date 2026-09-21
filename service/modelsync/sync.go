@@ -47,13 +47,16 @@ type probeTarget struct {
 }
 
 func baseURL(channel *model.Channel) string {
-	if channel.GetBaseURL() != "" {
-		return strings.TrimSuffix(channel.GetBaseURL(), "/")
+	base := channel.GetBaseURL()
+	if base == "" {
+		if channel.Type >= 0 && channel.Type < len(channeltype.ChannelBaseURLs) {
+			base = channeltype.ChannelBaseURLs[channel.Type]
+		}
 	}
-	if channel.Type >= 0 && channel.Type < len(channeltype.ChannelBaseURLs) {
-		return strings.TrimSuffix(channeltype.ChannelBaseURLs[channel.Type], "/")
-	}
-	return ""
+	// 去掉尾部斜杠与多余的 /v1 后缀（用户常填带 /v1 的 Base URL，避免拼出 /v1/v1/models）
+	base = strings.TrimSuffix(base, "/")
+	base = strings.TrimSuffix(base, "/v1")
+	return base
 }
 
 func buildTarget(channel *model.Channel) (*probeTarget, error) {
@@ -171,6 +174,41 @@ func dedup(names []string) []string {
 // ---------------------------------------------------------------------------
 // 同步执行
 // ---------------------------------------------------------------------------
+
+// FetchChannelModels 实时拉取渠道上游 /models 列表，只读不落库。
+// 供渠道编辑页「从上游拉取模型」按钮使用。
+func FetchChannelModels(channel *model.Channel) ([]string, string, error) {
+	target, err := buildTarget(channel)
+	if err != nil {
+		return nil, "", err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(config.ModelSyncTimeout)*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target.URL, nil)
+	if err != nil {
+		return nil, "", err
+	}
+	for k, v := range target.Headers {
+		req.Header.Set(k, v)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, "", err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, "", err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, "", fmt.Errorf("上游返回状态码 %d: %s", resp.StatusCode, truncate(string(body), 200))
+	}
+	names, _, err := parseModels(target.Source, body)
+	if err != nil {
+		return nil, target.Source, fmt.Errorf("解析上游模型列表失败: %s", err.Error())
+	}
+	return names, target.Source, nil
+}
 
 // SyncChannel 同步单个渠道的模型列表
 func SyncChannel(channel *model.Channel) SyncResult {

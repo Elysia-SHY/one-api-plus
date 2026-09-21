@@ -3,6 +3,20 @@
 > 基于 fork 的 [one-api](https://github.com/songquanpeng/one-api) 改造，定位为「小型 OpenRouter + Agent Gateway」。
 > 所有版本日期均为 2026-09-21（同一天内的快速迭代）。
 
+## [v0.3.1] - 2026-09-21
+
+### 修复（前端字段错位导致功能不可用）
+- **模型目录页**：后端 `ModelCatalog` 的 JSON 字段是 `model_name`，前端误用 `it.model`，导致「模型」列全空、启用 / 改状态报「channel_id 与 model 不能为空」。已修正。
+- **模型组页**：`AddModelGroup` / `AddGroupMember` 直接绑定结构体，前端却发 `name` / `group_id`+`model`，后端收不到（应为 `group_name` / `group_name`+`model_name`）；表格组名 / 成员名同样取错字段。已修正，「添加成员」的组名改为下拉选择。
+- **模型同步 404**：`baseURL()` 不剥离尾部 `/v1`，用户填 `https://host/v1` 这类 Base URL 时会拼出 `/v1/v1/models` 导致拉取静默失败。已修复：自动剥离尾部 `/` 与 `/v1`。
+- **同步结果透明化**：Catalog 页同步完成后逐渠道显示错误（此前渠道拉取失败只显示「新增 0 个」，看不出原因）。
+
+### 新增
+- **渠道编辑页「从上游拉取」按钮**：在渠道编辑的模型填写区新增按钮，实时调用上游 `/models`（不落库），拉到的模型自动去重合并填入「模型」多选框。新增后端端点 `GET /api/plus/catalog/fetch/:id`（`modelsync.FetchChannelModels`，只读探测）。
+- 版本号 `VERSION` 升至 `0.3.1`。
+
+---
+
 ## [v0.3.0] - 2026-09-21
 
 ### 新增（前端补全：所有 Plus 功能打通管理界面）

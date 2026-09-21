@@ -81,10 +81,10 @@ export default function Catalog() {
     try {
       const env = await PlusAPI.enableModel({
         channel_id: it.channel_id,
-        model: it.model,
+        model: it.model_name,
       });
       if (!env.success) return showError(env.message);
-      showSuccess(`已启用 ${it.model}`);
+      showSuccess(`已启用 ${it.model_name}`);
       load();
     } catch (e) {
       showError(e.message);
@@ -95,7 +95,7 @@ export default function Catalog() {
     try {
       const env = await PlusAPI.updateCatalogModel({
         channel_id: it.channel_id,
-        model: it.model,
+        model: it.model_name,
         status,
       });
       if (!env.success) return showError(env.message);
@@ -126,9 +126,19 @@ export default function Catalog() {
       </div>
 
       {result && (
-        <Message positive>
-          本次同步：{result.channels?.length || 0} 个渠道，新增{' '}
-          <b>{result.new_models}</b> 个模型。
+        <Message positive={!(result.channels || []).some((c) => c.error)} warning={(result.channels || []).some((c) => c.error)}>
+          本次同步：{result.channels?.length || 0} 个渠道，新增 <b>{result.new_models}</b> 个模型。
+          {(result.channels || []).some((c) => c.error) && (
+            <Message.List style={{ marginTop: '0.5em' }}>
+              {(result.channels || [])
+                .filter((c) => c.error)
+                .map((c, i) => (
+                  <Message.Item key={i}>
+                    渠道 #{c.channel_id}（{c.channel}）：{c.error}
+                  </Message.Item>
+                ))}
+            </Message.List>
+          )}
         </Message>
       )}
 
@@ -152,7 +162,7 @@ export default function Catalog() {
             {items.map((it, i) => (
               <Table.Row key={i}>
                 <Table.Cell>{it.channel_id}</Table.Cell>
-                <Table.Cell>{it.model}</Table.Cell>
+                <Table.Cell>{it.model_name}</Table.Cell>
                 <Table.Cell>{it.source}</Table.Cell>
                 <Table.Cell>
                   <Label color={STATUS_COLOR[it.status] || 'grey'} size='small'>

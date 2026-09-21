@@ -3,6 +3,7 @@ import {useTranslation} from 'react-i18next';
 import {Button, Card, Form, Input, Message} from 'semantic-ui-react';
 import {useNavigate, useParams} from 'react-router-dom';
 import {API, copy, getChannelModels, showError, showInfo, showSuccess, verifyJSON,} from '../../helpers';
+import PlusAPI from '../../helpers/plus';
 import {CHANNEL_OPTIONS} from '../../constants';
 import {renderChannelTip} from '../../helpers/render';
 
@@ -124,6 +125,34 @@ const EditChannel = () => {
       setFullModels(res.data.data.map((model) => model.id));
     } catch (error) {
       showError(error.message);
+    }
+  };
+
+  const [fetchingUpstream, setFetchingUpstream] = useState(false);
+  // 从该渠道上游实时拉取 /models 并填入（不落库，仅填充表单）
+  const fetchUpstreamModels = async () => {
+    if (!isEdit) {
+      showInfo('请先保存渠道，再从上游拉取模型');
+      return;
+    }
+    setFetchingUpstream(true);
+    try {
+      const env = await PlusAPI.fetchChannelModels(channelId);
+      if (!env.success) return showError(env.message || '拉取失败');
+      const names = env.data?.models || [];
+      if (names.length === 0) {
+        showInfo('上游未返回任何模型');
+        return;
+      }
+      handleInputChange(null, {
+        name: 'models',
+        value: Array.from(new Set([...(inputs.models || []), ...names])),
+      });
+      showSuccess(`已从上游拉取 ${names.length} 个模型并填入`);
+    } catch (e) {
+      showError(e.message);
+    } finally {
+      setFetchingUpstream(false);
     }
   };
 
@@ -437,6 +466,13 @@ const EditChannel = () => {
             )}
             {inputs.type !== 43 && (
               <div style={{ lineHeight: '40px', marginBottom: '12px' }}>
+                <Button
+                  type={'button'}
+                  loading={fetchingUpstream}
+                  onClick={fetchUpstreamModels}
+                >
+                  从上游拉取
+                </Button>
                 <Button
                   type={'button'}
                   onClick={() => {
