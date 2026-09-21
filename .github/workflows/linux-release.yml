@@ -5,62 +5,74 @@ permissions:
 on:
   push:
     tags:
-      - 'v*.*.*'
-      - '!*-alpha*'
-      - '!*-preview*'
+      - 'v*'
   workflow_dispatch:
     inputs:
-      name:
-        description: 'reason'
+      reason:
+        description: 'Build reason'
         required: false
+        default: 'manual release build'
+
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Check repository URL
-        run: |
-          REPO_URL=$(git config --get remote.origin.url)
-          if [[ $REPO_URL == *"pro" ]]; then
-            exit 1
-          fi
-      - uses: actions/setup-node@v3
+
+      - uses: actions/setup-node@v4
         with:
-          node-version: 16
+          node-version: 18
+
       - name: Build Frontend
         env:
           CI: ""
         run: |
           cd web
-          git describe --tags > VERSION
-          REACT_APP_VERSION=$(git describe --tags) chmod u+x ./build.sh && ./build.sh
+          VERSION_TAG=$(git describe --tags 2>/dev/null || cat ../VERSION)
+          echo "$VERSION_TAG" > VERSION
+          chmod u+x ./build.sh
+          REACT_APP_VERSION="$VERSION_TAG" ./build.sh
           cd ..
+
       - name: Set up Go
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v5
         with:
-          go-version: '>=1.18.0'
+          go-version: '1.21'
+          cache: true
+
       - name: Build Backend (amd64)
         run: |
           go mod download
-          go build -ldflags "-s -w -X 'github.com/Elysia-SHY/one-api-plus/common.Version=$(git describe --tags)' -extldflags '-static'" -o one-api
+          VERSION_TAG=$(cat VERSION 2>/dev/null || echo "0.1.0")
+          go build -ldflags "-s -w -X 'github.com/Elysia-SHY/one-api-plus/common.Version=${VERSION_TAG}' -extldflags '-static'" -o one-api
 
       - name: Build Backend (arm64)
         run: |
           sudo apt-get update
-          sudo apt-get install gcc-aarch64-linux-gnu
-          CC=aarch64-linux-gnu-gcc CGO_ENABLED=1 GOOS=linux GOARCH=arm64 go build -ldflags "-s -w -X 'one-api/common.Version=$(git describe --tags)' -extldflags '-static'" -o one-api-arm64
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          VERSION_TAG=$(cat VERSION 2>/dev/null || echo "0.1.0")
+          CC=aarch64-linux-gnu-gcc CGO_ENABLED=1 GOOS=linux GOARCH=arm64 go build -ldflags "-s -w -X 'github.com/Elysia-SHY/one-api-plus/common.Version=${VERSION_TAG}' -extldflags '-static'" -o one-api-arm64
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: one-api-binaries
+          path: |
+            one-api
+            one-api-arm64
 
       - name: Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
             one-api
             one-api-arm64
-          draft: true
+          draft: false
+          prerelease: false
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
