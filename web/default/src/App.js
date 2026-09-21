@@ -26,6 +26,15 @@ import Log from './pages/Log';
 import Chat from './pages/Chat';
 import LarkOAuth from './components/LarkOAuth';
 import Dashboard from './pages/Dashboard';
+import PlusCatalog from './pages/Plus/Catalog';
+import PlusCapability from './pages/Plus/Capability';
+import PlusGroup from './pages/Plus/Group';
+import PlusRateLimit from './pages/Plus/RateLimit';
+import PlusMcp from './pages/Plus/Mcp';
+import PlusMemory from './pages/Plus/Memory';
+import PlusResponses from './pages/Plus/Responses';
+import PlusDashboard from './pages/Plus/Dashboard';
+import PlusConfig from './pages/Plus/Config';
 
 const Home = lazy(() => import('./pages/Home'));
 const About = lazy(() => import('./pages/About'));
@@ -303,6 +312,78 @@ function App() {
         element={
           <PrivateRoute>
             <Dashboard />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path='/plus/catalog'
+        element={
+          <PrivateRoute>
+            <PlusCatalog />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path='/plus/capability'
+        element={
+          <PrivateRoute>
+            <PlusCapability />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path='/plus/group'
+        element={
+          <PrivateRoute>
+            <PlusGroup />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path='/plus/ratelimit'
+        element={
+          <PrivateRoute>
+            <PlusRateLimit />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path='/plus/mcp'
+        element={
+          <PrivateRoute>
+            <PlusMcp />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path='/plus/memory'
+        element={
+          <PrivateRoute>
+            <PlusMemory />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path='/plus/responses'
+        element={
+          <PrivateRoute>
+            <PlusResponses />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path='/plus/dashboard'
+        element={
+          <PrivateRoute>
+            <PlusDashboard />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path='/plus/config'
+        element={
+          <PrivateRoute>
+            <PlusConfig />
           </PrivateRoute>
         }
       />

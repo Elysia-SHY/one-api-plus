@@ -13,7 +13,18 @@
     "chat": "聊天",
     "login": "登录",
     "logout": "注销",
-    "register": "注册"
+    "register": "注册",
+    "plus": {
+      "catalog": "模型目录",
+      "capability": "能力库",
+      "group": "模型组",
+      "ratelimt": "限流",
+      "mcp": "MCP 网关",
+      "memory": "记忆",
+      "responses": "Responses",
+      "dashboard": "智能路由",
+      "config": "别名/定价"
+    }
   },
   "topup": {
     "title": "充值中心",

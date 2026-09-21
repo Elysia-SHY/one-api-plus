@@ -13,7 +13,18 @@
     "chat": "Chat",
     "login": "Login",
     "logout": "Logout",
-    "register": "Register"
+    "register": "Register",
+    "plus": {
+      "catalog": "Model Catalog",
+      "capability": "Capabilities",
+      "group": "Model Groups",
+      "ratelimt": "Rate Limit",
+      "mcp": "MCP Gateway",
+      "memory": "Memory",
+      "responses": "Responses",
+      "dashboard": "Smart Routing",
+      "config": "Alias / Pricing"
+    }
   },
   "topup": {
     "title": "Top Up Center",
