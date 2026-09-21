@@ -3,23 +3,38 @@ package router
 import (
 	"embed"
 	"fmt"
-	"github.com/gin-contrib/gzip"
-	"github.com/gin-contrib/static"
-	"github.com/gin-gonic/gin"
+	"net/http"
+	"os"
+	"strings"
+
 	"github.com/Elysia-SHY/one-api-plus/common"
 	"github.com/Elysia-SHY/one-api-plus/common/config"
 	"github.com/Elysia-SHY/one-api-plus/controller"
 	"github.com/Elysia-SHY/one-api-plus/middleware"
-	"net/http"
-	"strings"
+	"github.com/gin-contrib/gzip"
+	"github.com/gin-contrib/static"
+	"github.com/gin-gonic/gin"
 )
 
 func SetWebRouter(router *gin.Engine, buildFS embed.FS) {
-	indexPageData, _ := buildFS.ReadFile(fmt.Sprintf("web/build/%s/index.html", config.Theme))
-	router.Use(gzip.Gzip(gzip.DefaultCompression))
-	router.Use(middleware.GlobalWebRateLimit())
-	router.Use(middleware.Cache())
-	router.Use(static.Serve("/", common.EmbedFolder(buildFS, fmt.Sprintf("web/build/%s", config.Theme))))
+	themeDir := fmt.Sprintf("web/build/%s", config.Theme)
+	var indexPageData []byte
+
+	// 优先检查本地磁盘上是否存在前端静态资源
+	if fi, err := os.Stat(themeDir + "/index.html"); err == nil && !fi.IsDir() {
+		indexPageData, _ = os.ReadFile(themeDir + "/index.html")
+		router.Use(gzip.Gzip(gzip.DefaultCompression))
+		router.Use(middleware.GlobalWebRateLimit())
+		router.Use(middleware.Cache())
+		router.Use(static.Serve("/", static.LocalFile(themeDir, true)))
+	} else {
+		indexPageData, _ = buildFS.ReadFile(themeDir + "/index.html")
+		router.Use(gzip.Gzip(gzip.DefaultCompression))
+		router.Use(middleware.GlobalWebRateLimit())
+		router.Use(middleware.Cache())
+		router.Use(static.Serve("/", common.EmbedFolder(buildFS, themeDir)))
+	}
+
 	router.NoRoute(func(c *gin.Context) {
 		if strings.HasPrefix(c.Request.RequestURI, "/v1") || strings.HasPrefix(c.Request.RequestURI, "/api") {
 			controller.RelayNotFound(c)
