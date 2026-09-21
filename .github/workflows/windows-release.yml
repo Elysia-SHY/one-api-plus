@@ -32,15 +32,18 @@ jobs:
       - name: Build Frontend
         env:
           CI: ""
+          # CRA 的 eslint-webpack-plugin 在当前依赖组合下会报
+          # "Environment key jest/globals is unknown" 导致 build 直接失败；
+          # 用 env 块（而非续行）设置最稳，跨所有 shell 都生效。
+          DISABLE_ESLINT_PLUGIN: "true"
+          # Windows runner 上 webpack 容易 OOM，关 sourcemap + 提内存上限双保险
+          GENERATE_SOURCEMAP: "false"
+          NODE_OPTIONS: "--max-old-space-size=4096"
         run: |
           cd web/default
           npm install
-          # DISABLE_ESLINT_PLUGIN 必须带着：CRA 的 eslint 插件在当前依赖组合下
-          # 会报 "Environment key jest/globals is unknown"，Linux/macOS 的
-          # build.sh 里就是靠它绕开的，Windows 这条路径绕开不了。
-          DISABLE_ESLINT_PLUGIN=true \
-            REACT_APP_VERSION="$(git describe --tags 2>/dev/null || cat ../../VERSION)" \
-            npm run build
+          export REACT_APP_VERSION="$(git describe --tags 2>/dev/null || cat ../../VERSION)"
+          npm run build
           cd ../..
 
       - name: Set up Go
